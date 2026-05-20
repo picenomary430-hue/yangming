@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- 部分国产/内置浏览器横屏提示（标准浏览器以页面逻辑为准） -->
+  <meta name="screen-orientation" content="landscape" />
+  <meta name="x5-orientation" content="landscape" />
+  <meta name="x5-fullscreen" content="true" />
+  <meta name="full-screen" content="yes" />
+  <title>养茗·春信 — 春山认养契</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="orientation-lock" class="orientation-lock" hidden aria-live="polite">
+    <div class="orientation-lock-inner">
+      <div class="orientation-lock-icon" aria-hidden="true">
+        <svg viewBox="0 0 80 80" width="72" height="72" focusable="false">
+          <rect x="18" y="8" width="44" height="64" rx="6" fill="none" stroke="currentColor" stroke-width="2.5" />
+          <path d="M40 22v20M32 32l8 10 8-10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <p class="orientation-lock-title">请横屏游玩</p>
+      <p class="orientation-lock-hint">将手机转至横屏，以获得最佳体验</p>
+    </div>
+  </div>
+
+  <div id="game-root">
+    <!-- 水墨转场层 -->
+    <div id="ink-transition" class="ink-transition" aria-hidden="true"></div>
+
+    <!-- 开场动画 → 全屏背景 + 大图标 + 开始游戏（图标：assets/images/game-icon.png；背景：assets/images/intro-start-bg.png） -->
+    <section id="scene-intro" class="scene-intro" aria-label="开场">
+      <video
+        id="intro-video"
+        class="intro-video"
+        playsinline
+        preload="auto"
+        muted
+        src="assets/video/opening.mp4"
+        poster="assets/images/intro-poster.jpg"
+      ></video>
+      <!-- 需用户点击后再 play()，方可带声播放（规避自动播放策略） -->
+      <div id="intro-start-overlay" class="intro-start-overlay" role="dialog" aria-modal="true" aria-labelledby="intro-start-overlay-title">
+        <div class="intro-start-overlay-bg" aria-hidden="true"></div>
+        <div class="intro-start-overlay-vignette" aria-hidden="true"></div>
+        <div class="intro-start-overlay-inner">
+          <p id="intro-start-overlay-title" class="visually-hidden">入山 · 播放开场影片</p>
+          <button type="button" id="btn-enter-mountain" class="btn-enter-mountain" aria-label="入山，播放开场动画">
+            <span class="btn-enter-mountain-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64" width="40" height="40" focusable="false">
+                <path
+                  d="M32 8c-8 12-18 22-18 32 0 6 5 10 12 10h8c7 0 12-4 12-10 0-10-10-20-18-32z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linejoin="round"
+                  opacity="0.85"
+                />
+                <circle cx="32" cy="28" r="5" fill="currentColor" opacity="0.35" />
+              </svg>
+            </span>
+            <span class="btn-enter-mountain-text">入山</span>
+          </button>
+        </div>
+      </div>
+      <div id="intro-cta" class="intro-cta hidden" hidden>
+        <!-- 全屏背景图（cover），无图时由 CSS 渐变兜底 -->
+        <div class="intro-cta-bg" aria-hidden="true"></div>
+        <div class="intro-cta-vignette" aria-hidden="true"></div>
+        <div class="intro-cta-mist intro-cta-mist--a" aria-hidden="true"></div>
+        <div class="intro-cta-mist intro-cta-mist--b" aria-hidden="true"></div>
+        <div class="intro-cta-brush intro-cta-brush--1" aria-hidden="true"></div>
+        <div class="intro-cta-brush intro-cta-brush--2" aria-hidden="true"></div>
+        <div class="intro-cta-content">
+          <div class="intro-icon-wrap">
+            <img
+              id="intro-game-icon"
+              class="intro-game-icon"
+              src="assets/images/game-icon.png"
+              alt="养茗·春信"
+              width="384"
+              height="384"
+              decoding="async"
+            />
+            <span class="intro-icon-ring" aria-hidden="true"></span>
+          </div>
+          <button type="button" id="btn-start-game" class="btn-start-game" aria-label="开始游戏">
+            <img
+              class="btn-start-game-img"
+              src="assets/images/btn-start-game.png"
+              alt=""
+              width="280"
+              height="88"
+              decoding="async"
+            />
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 关卡间生长过场（每关对应 growth_1 … growth_5） -->
+    <div id="growth-cutscene" class="growth-cutscene hidden" aria-hidden="true" hidden>
+      <video id="growth-cutscene-video" class="growth-cutscene-video" playsinline preload="metadata" muted></video>
+    </div>
+
+    <!-- 须放在 #scene-contract 外：.scene 的 transform 会令子元素 fixed 相对窄条定位，导致只能看到一条画面 -->
+    <div
+      id="contract-parcel-screen"
+      class="contract-parcel-screen hidden"
+      hidden
+      tabindex="0"
+      role="application"
+      aria-label="拆开快递"
+      aria-describedby="contract-parcel-hint"
+    >
+      <div class="contract-parcel-stage">
+        <canvas
+          id="contract-parcel-canvas"
+          class="contract-parcel-frame"
+          width="640"
+          height="640"
+          aria-hidden="true"
+        ></canvas>
+        <p id="contract-parcel-hint" class="contract-parcel-hint">滑动拆开来自茶山的思念</p>
+      </div>
+      <!-- 开盒界面提示音：assets/audio/contract-parcel-hint.mp3，进入时播一遍 -->
+      <audio id="contract-parcel-hint-audio" class="visually-hidden" preload="auto" playsinline>
+        <source src="assets/audio/contract-parcel-hint.mp3" type="audio/mpeg" />
+      </audio>
+    </div>
+
+    <!-- 认养流程：全屏开盒序列帧（中央左→右滑）→ 爷爷的信 → 协议书 -->
+    <section id="scene-contract" class="scene scene-contract hidden" aria-label="认养契约" hidden>
+      <div class="contract-frame contract-envelope">
+        <!-- 第一层：爷爷的信（图），点击后进入协议书 -->
+        <div id="contract-letter-screen" class="contract-letter-screen" role="button" tabindex="0" aria-label="展信">
+          <div class="contract-letter-paper">
+            <div class="contract-letter-flip-stage">
+              <img
+                id="contract-grandfather-letter-img"
+                class="contract-letter-img"
+                src="assets/images/grandfather-letter.png"
+                alt="爷爷的信"
+                decoding="async"
+              />
+            </div>
+            <p class="contract-tap-hint">点击任意处展信</p>
+          </div>
+        </div>
+        <!-- 爷爷的信旁白：assets/audio/grandfather-letter-narration.mp3；无文件或播放失败时可自动进入展信 -->
+        <audio
+          id="contract-letter-narration-audio"
+          class="visually-hidden"
+          preload="metadata"
+          playsinline
+        >
+          <source src="assets/audio/grandfather-letter-narration.mp3" type="audio/mpeg" />
+        </audio>
+
+        <!-- 第二层：数字认养协议书 -->
+        <div id="contract-doc-screen" class="contract-doc-screen hidden" hidden>
+          <div class="contract-doc-inner">
+            <h1 class="contract-doc-title">数字认养协议书</h1>
+            <p class="contract-plan-tag">非遗守护·云认养计划</p>
+
+            <dl class="contract-meta-list">
+              <div class="contract-meta-row">
+                <dt>唯一编号</dt>
+                <dd id="contract-tea-id">茶07-2024-——</dd>
+              </div>
+              <div class="contract-meta-row">
+                <dt>地理坐标</dt>
+                <dd>东经120.1°，北纬30.2°（西湖龙井非遗产区）</dd>
+              </div>
+              <div class="contract-meta-row">
+                <dt>树龄</dt>
+                <dd>50年老茶蓬</dd>
+              </div>
+            </dl>
+
+            <p class="contract-doc-body">
+              兹确认认养人自愿参与「非遗守护·云认养计划」，云守本株老茶蓬之生长节律与春信，
+              恪守茶山礼法，与非遗同行。
+            </p>
+
+            <div class="contract-sign-area contract-sign-area--doc">
+              <label class="sign-label" for="player-name">认养人署名</label>
+              <div class="sign-row">
+                <input
+                  type="text"
+                  id="player-name"
+                  name="playerName"
+                  class="name-input"
+                  maxlength="12"
+                  placeholder="请填写姓名"
+                  autocomplete="off"
+                />
+                <button type="button" id="btn-seal" class="seal-btn" aria-label="在红印泥处落款">
+                  <img
+                    class="contract-seal-img"
+                    src="assets/images/contract-seal.png"
+                    alt=""
+                    width="39"
+                    height="48"
+                    decoding="async"
+                  />
+                  <span class="seal-hint">点击红印落款</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 通关：云认养守护档案 -->
+    <div id="certificate-modal" class="certificate-modal hidden" aria-hidden="true" hidden role="dialog" aria-labelledby="cert-title">
+      <div class="certificate-backdrop" id="certificate-backdrop"></div>
+      <div class="certificate-flip-stage">
+      <div class="certificate-poster">
+        <div class="certificate-poster-layout">
+          <div class="certificate-poster-media">
+            <div class="certificate-hero">
+              <img
+                id="cert-tea-img"
+                class="certificate-tea-img"
+                src="assets/images/stage5.png"
+                alt="照料成熟的茶树"
+                decoding="async"
+              />
+            </div>
+          </div>
+          <div class="certificate-poster-main">
+            <h2 id="cert-title" class="certificate-title">云认养守护档案</h2>
+            <ul class="certificate-stats">
+              <li>你是第 <strong id="cert-guardian-rank">——</strong> 位非遗守护人</li>
+              <li>你的茶树编号为 <strong id="cert-tea-id">——</strong></li>
+              <li>你已完整掌握西湖龙井炒制 5 大核心非遗技艺</li>
+              <li>你点亮了全部 5 枚守护勋章</li>
+            </ul>
+            <p class="certificate-signoff">茶山&nbsp;&nbsp;老茶人&nbsp;&nbsp;寄</p>
+            <div class="certificate-actions">
+              <button type="button" class="cert-btn cert-btn--ghost" id="btn-cert-exit">退出游戏</button>
+              <button type="button" class="cert-btn cert-btn--primary" id="btn-cert-restart">重新开始</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <!-- 主场景：全屏茶园 -->
+    <section id="scene-main" class="scene-main-full hidden" aria-label="茶园主场景" hidden>
+      <div id="main-scene" class="main-scene">
+        <!-- 全屏背景：按成长阶段切换 -->
+        <div class="main-bg-stack" id="main-bg-stack" aria-hidden="true">
+          <video
+            id="stage1-bg-video"
+            class="main-bg main-bg--1 main-bg-video"
+            data-stage-index="0"
+            src="assets/video/stage1-loop.mp4"
+            playsinline
+            muted
+            loop
+            autoplay
+            preload="metadata"
+          ></video>
+          <video
+            id="stage2-bg-video"
+            class="main-bg main-bg--2 main-bg-video"
+            data-stage-index="1"
+            src="assets/video/stage2-loop.mp4"
+            playsinline
+            muted
+            loop
+            autoplay
+            preload="metadata"
+          ></video>
+          <video
+            id="stage3-bg-video"
+            class="main-bg main-bg--3 main-bg-video"
+            data-stage-index="2"
+            src="assets/video/stage3-loop.mp4"
+            playsinline
+            muted
+            loop
+            autoplay
+            preload="metadata"
+          ></video>
+          <video
+            id="stage4-bg-video"
+            class="main-bg main-bg--4 main-bg-video"
+            data-stage-index="3"
+            src="assets/video/stage4-loop.mp4"
+            playsinline
+            muted
+            loop
+            autoplay
+            preload="metadata"
+          ></video>
+          <video
+            id="stage5-bg-video"
+            class="main-bg main-bg--5 main-bg-video"
+            data-stage-index="4"
+            src="assets/video/stage5-loop.mp4"
+            playsinline
+            muted
+            loop
+            autoplay
+            preload="metadata"
+          ></video>
+        </div>
+        <div id="rain-effect" class="rain-effect hidden" aria-hidden="true">
+          <canvas id="rain-canvas" class="rain-canvas"></canvas>
+          <div class="rain-dim-mask" aria-hidden="true"></div>
+        </div>
+
+        <!-- 爷爷碎碎念（画面中下） -->
+        <div class="grandpa-mutter-zone">
+          <div id="grandpa-mutter" class="grandpa-mutter" role="status" aria-live="polite"></div>
+        </div>
+
+        <!-- UI 叠加 -->
+        <div class="main-ui-overlay">
+          <header class="ui-top-bar">
+            <div class="seal-guardian glass-panel" title="守护者">
+              <div class="seal-guardian-inner">
+                <span class="seal-guardian-text">守护者</span>
+                <span id="guardian-name" class="seal-guardian-name" aria-label="认养人署名">——</span>
+              </div>
+            </div>
+            <div class="stage-title-wrap glass-panel glass-panel--flat">
+              <p id="stage-label" class="stage-label">当前阶段：一阶·萌芽期</p>
+              <p class="stage-sub"><span id="growth-display">0</span> / 100 春信</p>
+            </div>
+            <div class="env-panel glass-panel" aria-label="环境监测">
+              <div class="env-row"><span class="env-key">时刻</span><span id="env-time" class="env-val">——:——:——</span></div>
+              <div class="env-row"><span class="env-key">天气</span><span id="env-weather" class="env-val">晴</span></div>
+              <div class="env-row"><span class="env-key">湿度</span><span id="env-humidity" class="env-val">62%</span></div>
+              <div class="env-row env-row--debug">
+                <label class="env-key" for="weather-debug-select">演示天气</label>
+                <select id="weather-debug-select" class="weather-debug-select" aria-label="天气调试开关">
+                  <option value="auto">自动</option>
+                  <option value="晴">晴</option>
+                  <option value="雨">雨</option>
+                </select>
+              </div>
+              <div class="env-row env-row--subtle"><span class="env-key">认养人</span><span id="display-name" class="env-val">——</span></div>
+            </div>
+          </header>
+
+          <footer class="ui-bottom-bar">
+            <div class="dialog-bubble glass-panel" id="npc-dialog">
+              <p class="dialog-text is-visible" id="dialog-text" aria-live="polite">春山静候。修好手账，茶树自有回应。</p>
+            </div>
+            <p class="guide-hint glass-panel glass-panel--hint" id="guide-hint">修复手账，茶树获得成长。</p>
+            <button type="button" class="notebook-fab" id="btn-notebook" aria-label="打开手账">
+              <img
+                class="notebook-img"
+                src="assets/images/handbook-icon.png"
+                alt=""
+                width="128"
+                height="128"
+                decoding="async"
+              />
+            </button>
+          </footer>
+        </div>
+
+        <div id="victory-banner" class="victory-banner glass-panel hidden" role="status" hidden>
+          <p class="victory-title">春信已满</p>
+          <p class="victory-sub">茶园与你，共有这一段非遗春光。</p>
+          <button type="button" class="victory-archives-btn" id="btn-open-archives" hidden>云认养守护档案</button>
+        </div>
+      </div>
+
+      <!-- 古风手账关卡 #handbook-modal（内容由 handbook.js 注入） -->
+      <div id="handbook-modal" class="handbook-modal hidden" aria-hidden="true" hidden role="dialog" aria-labelledby="handbook-modal-title">
+        <div class="handbook-backdrop" id="handbook-backdrop"></div>
+        <div class="handbook-shell">
+          <button type="button" class="handbook-close" id="btn-handbook-close" aria-label="关闭手账">×</button>
+          <h2 id="handbook-modal-title" class="visually-hidden">茶事手账</h2>
+          <div id="handbook-zhun-stamp" class="handbook-zhun-stamp" aria-hidden="true">
+            <svg
+              class="handbook-zhun-stamp__svg"
+              viewBox="0 0 100 100"
+              width="100%"
+              height="100%"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <defs>
+                <radialGradient id="handbookZhunSealGrad" cx="38%" cy="32%" r="78%">
+                  <stop offset="0%" stop-color="#e85c52" />
+                  <stop offset="45%" stop-color="#c23a2f" />
+                  <stop offset="100%" stop-color="#8f241c" />
+                </radialGradient>
+                <mask id="handbookZhunStampMask" maskUnits="userSpaceOnUse">
+                  <rect width="100" height="100" rx="5" ry="5" fill="white" />
+                  <text
+                    x="50"
+                    y="52"
+                    text-anchor="middle"
+                    dominant-baseline="central"
+                    fill="black"
+                    font-size="56"
+                    font-weight="800"
+                    font-family="STKaiti, KaiTi, FangSong, SimSun, Noto Serif SC, serif"
+                  >
+                    准
+                  </text>
+                </mask>
+              </defs>
+              <rect
+                width="100"
+                height="100"
+                rx="5"
+                ry="5"
+                fill="url(#handbookZhunSealGrad)"
+                mask="url(#handbookZhunStampMask)"
+              />
+            </svg>
+          </div>
+          <div class="handbook-book-wrap">
+            <div class="book handbook-book" id="handbook-book">
+              <div class="book-spine-line" aria-hidden="true">
+                <span class="book-spine-line-inner"></span>
+              </div>
+              <div class="book-stage book-stage--rtl">
+                <div class="book-plate book-plate--spread">
+                  <div class="book-stack-bg" aria-hidden="true"></div>
+                  <div class="leaves-stack" id="handbook-leaves">
+                    <div class="leaf" id="handbook-leaf-0" data-spread="0">
+                      <div class="page front handbook-page handbook-page--text"></div>
+                      <div class="page back handbook-page handbook-page--game"></div>
+                    </div>
+                    <div class="leaf" id="handbook-leaf-1" data-spread="1">
+                      <div class="page front handbook-page handbook-page--text"></div>
+                      <div class="page back handbook-page handbook-page--game"></div>
+                    </div>
+                    <div class="leaf" id="handbook-leaf-2" data-spread="2">
+                      <div class="page front handbook-page handbook-page--text"></div>
+                      <div class="page back handbook-page handbook-page--game"></div>
+                    </div>
+                    <div class="leaf" id="handbook-leaf-3" data-spread="3">
+                      <div class="page front handbook-page handbook-page--text"></div>
+                      <div class="page back handbook-page handbook-page--game"></div>
+                    </div>
+                    <div class="leaf" id="handbook-leaf-4" data-spread="4">
+                      <div class="page front handbook-page handbook-page--text"></div>
+                      <div class="page back handbook-page handbook-page--game"></div>
+                    </div>
+                    <div class="leaf" id="handbook-leaf-5" data-spread="5">
+                      <div class="page front handbook-page handbook-page--text"></div>
+                      <div class="page back handbook-page handbook-page--game"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="handbook-inpage-nav nav-btn handbook-inpage-nav--prev handbook-nav-prev"
+                id="handbook-nav-prev"
+                aria-label="下一篇（往后翻）"
+              >
+                <svg viewBox="0 0 100 100" class="brush-arrow" aria-hidden="true" focusable="false">
+                  <path
+                    d="M70 20 C 65 30, 30 45, 15 50 C 30 55, 65 70, 70 80"
+                    stroke="currentColor"
+                    stroke-width="6"
+                    fill="none"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M18 50 L 35 40 M 18 50 L 35 60"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    fill="none"
+                    class="brush-arrow-feather"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="handbook-inpage-nav nav-btn handbook-inpage-nav--next handbook-nav-next"
+                id="handbook-nav-next"
+                aria-label="上一篇（往回翻）"
+              >
+                <svg viewBox="0 0 100 100" class="brush-arrow brush-arrow--mirror" aria-hidden="true" focusable="false">
+                  <path
+                    d="M70 20 C 65 30, 30 45, 15 50 C 30 55, 65 70, 70 80"
+                    stroke="currentColor"
+                    stroke-width="6"
+                    fill="none"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M18 50 L 35 40 M 18 50 L 35 60"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    fill="none"
+                    class="brush-arrow-feather"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div class="handbook-bottom-bar">
+              <span id="handbook-page-label" class="handbook-nav-page">壹</span>
+            </div>
+          </div>
+          <p class="handbook-footnote" id="handbook-footnote"></p>
+        </div>
+        <!-- 手账终页寄语配音：assets/audio/hb-epilogue-narration.mp3，进入终页自动播一遍 -->
+        <audio id="handbook-epilogue-narration-audio" class="visually-hidden" preload="auto" playsinline>
+          <source src="assets/audio/hb-epilogue-narration.mp3" type="audio/mpeg" />
+        </audio>
+      </div>
+      <!-- 茶园认养生长界面背景音乐：assets/audio/main-garden-bgm.mp3，循环 -->
+      <audio id="main-scene-bgm-audio" class="visually-hidden" preload="metadata" playsinline loop>
+        <source src="assets/audio/main-garden-bgm.mp3" type="audio/mpeg" />
+      </audio>
+    </section>
+
+    <!-- 手账点错反馈（采青点错茶叶、揉捻顺序点错等）：超时不播；assets/audio/handbook-error.mp3 -->
+    <audio id="handbook-error-sfx" class="visually-hidden" preload="auto" playsinline>
+      <source src="assets/audio/handbook-error.mp3" type="audio/mpeg" />
+    </audio>
+  </div>
+
+  <script src="weather-config.js"></script>
+  <script src="script.js"></script>
+  <script src="handbook.js"></script>
+</body>
+</html>
